@@ -1,0 +1,23 @@
+name: Issue AI
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: write
+  models: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: issue-ai-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mingzaily/issue-ai-analyze@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          language: zh
