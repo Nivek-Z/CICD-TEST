@@ -84,3 +84,11 @@ jobs:
             git commit -m "chore: update image tag to ${{ github.sha }} [skip ci]"
             git push
           fi
+
+      - name: Clean up old GHCR images
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ env.IMAGE_LOWER }}
+          package-type: container
+          min-versions-to-keep: 10
+          delete-only-untagged-versions: false
