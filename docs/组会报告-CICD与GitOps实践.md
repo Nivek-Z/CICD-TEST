@@ -336,7 +336,95 @@ Git 仓库                 k3s 集群
 
 ---
 
-## 九、演示案例：CICD-TEST 仓库
+## 九、ArgoCD — GitOps 操作符
+
+> ArgoCD 是当前最主流的 GitOps 操作符（Operator），本质上是一个**跑在 K8s 里的 Pod**，负责让集群状态始终对齐 Git 仓库。
+
+### 一句话理解
+
+```
+ArgoCD  =  一个住在 K8s 里的"巡检机器人"
+           每隔 N 秒看一眼 Git 仓库，再看一眼集群
+           不一样？自动把集群改回 Git 的样子
+```
+
+### 核心架构
+
+```
+┌──────────────────────────────────────────┐
+│               k3s 集群                     │
+│                                          │
+│  ┌─────────┐     ┌──────────────────┐   │
+│  │ ArgoCD  │────→│ 你的应用          │   │
+│  │ (Pod)   │     │ Deployment/Pod   │   │
+│  │         │     │ Service/ConfigMap│   │
+│  │ 轮询 Git │     └──────────────────┘   │
+│  │ 对比状态 │                            │
+│  │ 自动同步 │     ┌──────────────────┐   │
+│  │ selfHeal │────→│ 不一致？自动修正  │   │
+│  └────┬────┘     └──────────────────┘   │
+│       │                                 │
+└───────┼─────────────────────────────────┘
+        │ 轮询 (默认 3 分钟)
+        ▼
+┌──────────────────┐
+│   Git 仓库        │
+│   (唯一真相源)     │
+└──────────────────┘
+```
+
+### 本仓库的 ArgoCD 配置
+
+文件 `argocd/application.yaml`：
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:Nivek-Z/CICD-TEST.git
+    targetRevision: HEAD
+    path: charts/demo-app
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+```
+
+### 关键字段说明
+
+| 字段 | 含义 |
+|------|------|
+| `source.repoURL` | 监控哪个 Git 仓库 |
+| `source.path` | 仓库里的哪个路径（Helm Chart 位置） |
+| `destination.namespace` | 部署到 K8s 哪个命名空间 |
+| `syncPolicy.automated.prune` | 资源被 Git 删了？集群里也自动删掉 |
+| `syncPolicy.automated.selfHeal` | 有人手动改了集群？自动恢复回 Git 状态 |
+
+### 手动操作方式
+
+```
+# 通过 ArgoCD CLI 查看状态
+argocd app get demo-app
+
+# 通过 ArgoCD Web UI
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+# 浏览器打开 https://localhost:8080
+```
+
+---
+
+## 十、演示案例：CICD-TEST 仓库
 
 ![GitOps 完整流水线图](pic.png)
 
@@ -407,7 +495,7 @@ ArgoCD selfHeal 自动恢复 → 副本数回归 Git 声明状态
 
 ---
 
-## 十、工具链生态总览
+## 十一、工具链生态总览
 
 ```
 CI/CD:         Jenkins    GitLab CI    GitHub Actions    CircleCI
@@ -419,7 +507,7 @@ GitOps 操作符:  ArgoCD     Flux CD      Crossplane
 
 ---
 
-## 十一、总结
+## 十二、总结
 
 > **DevOps 是"为什么要做"——文化和方向。**
 > **CI/CD 是"怎么做"——自动化的具体实践。**
