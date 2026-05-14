@@ -8,7 +8,39 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint YAML
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: |
+            charts/demo-app/values.yaml
+            .github/workflows/ci.yaml
+          config_data: |
+            extends: default
+            rules:
+              line-length: disable
+              document-start: disable
+              truthy: disable
+              braces: disable
+              brackets: disable
+
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: app/Dockerfile
+
+      - name: Check workflow syntax
+        uses: reviewdog/action-actionlint@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
   build-and-deploy:
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: write
