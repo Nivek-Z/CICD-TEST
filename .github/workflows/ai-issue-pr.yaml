@@ -1,0 +1,85 @@
+name: AI Issue → PR
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  generate-pr:
+    if: github.event.label.name == 'ai-suggest'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read relevant files
+        id: read-files
+        run: |
+          echo '### Source Code ###' > context.txt
+          cat app/html/index.html >> context.txt
+          echo -e '\n\n### Helm Values ###' >> context.txt
+          cat charts/demo-app/values.yaml >> context.txt
+
+      - name: Call AI API
+        id: ai
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          PROMPT=$(cat <<'PROMPT'
+          You are a developer. Based on this GitHub Issue, suggest specific code changes for the repo.
+          Repository: Nginx static site at app/html/index.html with Helm chart at charts/demo-app/.
+          Files: app/html/index.html, app/Dockerfile, charts/demo-app/values.yaml
+          Issue: ${{ env.ISSUE_TITLE }} - ${{ env.ISSUE_BODY }}
+
+          Output ONLY valid shell commands to apply the changes (git mv / sed / echo).
+          Wrap code blocks in ```bash ... ```.
+          Include at most 3 changed files.
+          PROMPT
+          )
+
+          JSON=$(jq -n --arg p "$PROMPT" '{model: "gpt-4o", messages: [{role: "user", content: $p}], temperature: 0.3}')
+          RESPONSE=$(curl -s -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$JSON" https://api.openai.com/v1/chat/completions)
+
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESPONSE" | jq -r '.choices[0].message.content' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Apply AI suggestions
+        run: |
+          echo "${{ steps.ai.outputs.content }}" | sed -n '/```bash/,/```/p' | sed '1d;$d' > /tmp/apply.sh
+          chmod +x /tmp/apply.sh
+          bash /tmp/apply.sh || true
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "feat: AI suggested changes for #${{ github.event.issue.number }}"
+          branch: ai-suggest-${{ github.event.issue.number }}
+          delete-branch: true
+          title: "🤖 AI Suggestion: ${{ github.event.issue.title }}"
+          body: |
+            ## AI Generated PR
+
+            Automatically generated from Issue #${{ github.event.issue.number }}.
+
+            **Issue:** ${{ github.event.issue.title }}
+            ${{ github.event.issue.body }}
+
+            ---
+            *This PR was created by AI. Please review carefully before merging.*
+          labels: ai-generated
+
+      - name: Comment on Issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "🤖 Created PR with suggested changes — please review."
