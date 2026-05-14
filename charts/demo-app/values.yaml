@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/nivek-z/cicd-test
-  tag: latest
+  tag: 29282ef051bd94d79f0585c567f2b2c6217a5c08
   pullPolicy: IfNotPresent
 
 service:
